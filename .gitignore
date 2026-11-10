@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+build/
+dist/
+output/
+/LittleFS_Programmer.exe
+*.spec
