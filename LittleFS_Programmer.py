@@ -474,14 +474,11 @@ class App(tk.Tk):
         self.minsize(int(760 * K), int(520 * K))
         self.configure(bg=BG)
         try:
+            self.iconbitmap(default=res("app.ico"))  # every window (dialogs too) uses the IoT icon
             self.iconbitmap(res("app.ico"))
         except Exception:
             pass
-        try:
-            self._icon = tk.PhotoImage(file=res("app_icon.png"))
-            self.iconphoto(True, self._icon)
-        except Exception:
-            pass
+        self.after(30, self.force_icon)
         self.q = queue.Queue()
         self.cfg = self.load_cfg()
         self.lang = self.cfg.get("lang", "fa")
@@ -831,6 +828,21 @@ class App(tk.Tk):
         self.label(bf, "baud", self.f, fg=TX2, anchor=A_, width=7).pack(side=S_)
         ttk.Combobox(bf, textvariable=self.baud, width=10, values=["115200", "230400", "460800", "921600"]).pack(side=S_)
         self.refresh_ports()
+
+    def force_icon(self):
+        """Set big+small window icons directly so the taskbar / Start never fall back to Tk's feather."""
+        try:
+            import ctypes
+            u = ctypes.windll.user32
+            u.LoadImageW.restype = ctypes.c_void_p
+            hwnd = u.GetParent(self.winfo_id()) or self.winfo_id()
+            path = res("app.ico")
+            for kind, size in ((1, 32), (0, 16)):  # ICON_BIG, ICON_SMALL
+                h = u.LoadImageW(None, path, 1, size, size, 0x10)  # IMAGE_ICON, LR_LOADFROMFILE
+                if h:
+                    u.SendMessageW(ctypes.c_void_p(hwnd), 0x80, kind, ctypes.c_void_p(h))  # WM_SETICON
+        except Exception:
+            pass
 
     # -------------------------------------------------------------- dialogs ---
     def dark_title(self, w):
