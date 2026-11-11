@@ -229,6 +229,18 @@ S = {
  dev_busy="پورت {port} در دسترس نیست",
  dev_busy_hint="برنامه‌ی دیگری (مثل Arduino IDE یا Serial Monitor) پورت را باز نگه داشته است. آن را ببندید و «اسکن مجدد» را بزنید.",
  dev_hint="برد در حالت دانلود نیست. دکمه BOOT را نگه دارید، یک بار EN (RESET) را بزنید، BOOT را رها کنید و «اسکن مجدد» را بزنید. می‌توانید مستقیم هم برنامه‌ریزی را امتحان کنید.",
+ b_tools="ابزار پاک‌سازی", tl_t="ابزار پاک‌سازی حافظه",
+ tl_pre_on="✔  پاک‌سازی پارتیشن قبل از هر نوشتن: روشن", tl_pre_off="✖  پاک‌سازی پارتیشن قبل از هر نوشتن: خاموش",
+ tl_part="پاک کردن پارتیشن LittleFS", tl_all="پاک کردن کل حافظه‌ی فلش",
+ tl_note="پاک کردن پارتیشن امن است و فقط فایل‌های LittleFS را حذف می‌کند. پاک کردن کل حافظه، Firmware و تنظیمات را هم حذف می‌کند.",
+ er_part="پارتیشن LittleFS پاک می‌شود.\nآدرس: {off}\nاندازه: {size}\n\nهمه‌ی فایل‌های داخل آن حذف می‌شوند. ادامه می‌دهید؟",
+ er_all="کل حافظه‌ی فلش پاک می‌شود!\n\nFirmware، تنظیمات و شناسه‌ی دستگاه هم حذف می‌شود و برد بدون برنامه می‌ماند.",
+ er_all2="این کار برگشت‌پذیر نیست. بعد از آن باید Firmware را دوباره روی برد بنویسید.\n\nکاملاً مطمئن هستید؟",
+ er_yes="پاک کن", er_confirm_t="تأیید پاک‌سازی",
+ ge1=("در حال پاک‌سازی…", "کابل USB را جدا نکنید و برد را خاموش نکنید."),
+ ge_part=("پارتیشن LittleFS پاک شد", "همه‌ی فایل‌های داخل این بخش حذف شدند. می‌توانید فایل جدید بنویسید."),
+ ge_all=("کل حافظه‌ی فلش پاک شد", "برای راه‌اندازی برد باید Firmware را دوباره بنویسید."),
+ e_erase=("پاک‌سازی انجام نشد", "اتصال برد و پورت را بررسی کنید و دوباره تلاش کنید."),
  b_go="ادامه", b_cancel="انصراف", b_ok="باشه", b_try="امتحان مستقیم",
  boot_t="دکمه BOOT را فشار دهید",
  boot_msg="برد در حالت دانلود نیست.\n\n۱) دکمه BOOT را نگه دارید\n۲) هم‌زمان یک بار دکمه EN (RESET) را بزنید\n۳) BOOT را تا شروع نوشتن نگه دارید",
@@ -281,6 +293,18 @@ S = {
  dev_busy="Port {port} is not available",
  dev_busy_hint="Another program (like Arduino IDE or a serial monitor) is holding the port. Close it and press Rescan.",
  dev_hint="The board is not in download mode. Hold BOOT, tap EN (RESET), release BOOT, then press Rescan. You can also try programming directly.",
+ b_tools="Erase tools", tl_t="Flash erase tools",
+ tl_pre_on="✔  Erase partition before every write: ON", tl_pre_off="✖  Erase partition before every write: OFF",
+ tl_part="Erase LittleFS partition", tl_all="Erase entire flash",
+ tl_note="Erasing the partition is safe and only removes LittleFS files. Erasing the entire flash also removes the firmware and settings.",
+ er_part="The LittleFS partition will be erased.\nAddress: {off}\nSize: {size}\n\nAll files inside it will be deleted. Continue?",
+ er_all="The ENTIRE flash will be erased!\n\nFirmware, settings and device identity are removed too, leaving the board without a program.",
+ er_all2="This cannot be undone. Afterwards you must flash the firmware again.\n\nAre you absolutely sure?",
+ er_yes="Erase", er_confirm_t="Confirm erase",
+ ge1=("Erasing…", "Do not unplug the USB cable or power off the board."),
+ ge_part=("LittleFS partition erased", "All files in this region were deleted. You can write new files now."),
+ ge_all=("Entire flash erased", "You must flash the firmware again to make the board run."),
+ e_erase=("Erase failed", "Check the board connection and port, then try again."),
  b_go="Continue", b_cancel="Cancel", b_ok="OK", b_try="Try anyway",
  boot_t="Press the BOOT button",
  boot_msg="The board is not in download mode.\n\n1) Press and hold the BOOT button\n2) Tap EN (RESET) once while holding it\n3) Keep holding BOOT until writing starts",
@@ -722,6 +746,10 @@ class App(tk.Tk):
                               command=self.save_report)
         self.brep.pack(side=S_)
         self.reg.append((self.brep, "b_report"))
+        self.btools = RBtn(ab, font=self.f, relief="flat", bg=BTN, fg=TX, cursor="hand2", padx=10, pady=5,
+                           command=self.show_tools)
+        self.btools.pack(side=S_, padx=8)
+        self.reg.append((self.btools, "b_tools"))
 
         self.log = tk.Text(body, height=3, font=self.fm, bg="#0A0D10", fg="#B9D4E6", relief="flat", state="disabled",
                            wrap="word", padx=8, pady=6)
@@ -900,7 +928,8 @@ class App(tk.Tk):
             try: w.destroy()
             except Exception: pass
         for label, val, primary in buttons:
-            RBtn(row, text=label, font=self.fb, bg=ACC if primary else BTN, fg=ON_ACC if primary else TX,
+            RBtn(row, text=label, font=self.fb, bg=(primary if isinstance(primary, str) else ACC) if primary else BTN,
+                 fg=("#1A0A09" if isinstance(primary, str) else ON_ACC) if primary else TX,
                  padx=22, pady=5, command=lambda v=val: pick(v)).pack(side=S_, padx=(0, 10) if not self.rtl else (10, 0))
         w.protocol("WM_DELETE_WINDOW", lambda: pick(None))
         w.update_idletasks()
@@ -1631,6 +1660,13 @@ class App(tk.Tk):
                         boot_used = True
             if not re.search(busy_re, txt if code != 0 and not boot_used else "", re.I):
                 # 3) write (stay in download mode afterwards so we can read back)
+                if self.cfg.get("erase_before"):
+                    L(f"> esptool erase-region {off} {hex(cur['size'])}  (erase before write)")
+                    c0, t0 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "no-reset",
+                                                "erase-region", off, hex(cur["size"])), on_line, timeout=300)
+                    if c0 != 0:
+                        txt = t0
+                        raise RuntimeError("erase")
                 L(f"> esptool write-flash {off} littlefs.bin")
                 last[0] = 0
                 code, txt = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "no-reset",
@@ -1718,6 +1754,153 @@ class App(tk.Tk):
             self.render_buttons()
             self.render_all()
             self.write_report(result="FAILED")
+        self.ui(done)
+
+    # ---------------------------------------------------------------- erase ---
+    def conn_info(self):
+        if self.mode.get() == "auto":
+            return (self.dev["port"], self.dev["chip"]) if self.dev else (None, "auto")
+        m = re.match(r"\s*(COM\d+)", self.port.get(), re.I)
+        return (m.group(1).upper() if m else (self.port.get().strip() or None)), (self.chip.get() or "auto")
+
+    def show_tools(self):
+        if self.busy:
+            return
+        if getattr(self, "_tools", None) and self._tools.winfo_exists():
+            self._tools.lift()
+            return
+        A_, J_, S_ = self.A, self.J, self.S
+        w = tk.Toplevel(self)
+        self._tools = w
+        w.title(self.rw("tl_t"))
+        w.configure(bg=BG)
+        w.resizable(False, False)
+        w.transient(self)
+        box = tk.Frame(w, bg=CARD, highlightbackground=LINE, highlightthickness=1)
+        box.pack(padx=14, pady=14)
+        col = tk.Frame(box, bg=CARD)
+        col.pack(padx=int(26 * K), pady=int(22 * K))
+        wl = int(400 * K)
+        tk.Frame(col, width=wl, height=1, bg=CARD).pack()
+        head = tk.Frame(col, bg=CARD)
+        head.pack(fill="x")
+        tk.Label(head, text="🧹", font=tkfont.Font(family="Segoe UI Emoji", size=18), bg=CARD, fg=ACC).pack(side=S_)
+        tk.Label(head, text=self.tr("tl_t"), font=tkfont.Font(family="Segoe UI Semibold", size=13),
+                 bg=CARD, fg=TX).pack(side=S_, padx=12)
+        tk.Frame(col, bg=LINE, height=1).pack(fill="x", pady=(12, 12))
+        tk.Label(col, text=self.shape(self.rw("tl_note"), wrap=wl - 10, font=self.f), font=self.f, bg=CARD, fg=TX2,
+                 wraplength=wl, justify=J_, anchor=A_).pack(fill="x", pady=(0, 12))
+
+        def pre_txt():
+            return self.tr("tl_pre_on" if self.cfg.get("erase_before") else "tl_pre_off")
+
+        def flip():
+            self.cfg["erase_before"] = not self.cfg.get("erase_before", False)
+            on = self.cfg["erase_before"]
+            tb.config(text=pre_txt(), bg=OK_BG if on else BTN, fg=OK if on else TX)
+            self.save_cfg()
+        on = self.cfg.get("erase_before", False)
+        tb = RBtn(col, text=pre_txt(), font=self.f, bg=OK_BG if on else BTN, fg=OK if on else TX, padx=12, pady=7,
+                  command=flip)
+        tb.pack(fill="x", pady=(0, 8))
+
+        def go(kind):
+            w.destroy()
+            self.after(100, lambda: self.erase_start(kind))
+        RBtn(col, text=self.tr("tl_part"), font=self.fb, bg=ACC_BG, fg=ACC, padx=12, pady=8,
+             command=lambda: go("part")).pack(fill="x", pady=(0, 8))
+        RBtn(col, text=self.tr("tl_all"), font=self.fb, bg=ER_BG, fg=ER, padx=12, pady=8,
+             command=lambda: go("all")).pack(fill="x", pady=(0, 16))
+        RBtn(col, text=self.tr("close"), font=self.fb, bg=BTN, fg=TX, padx=26, pady=5,
+             command=w.destroy).pack(anchor=A_)
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - w.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - w.winfo_height()) // 3
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.dark_title(w)
+        w.grab_set()
+
+    def erase_start(self, kind):
+        if self.busy:
+            return
+        port, chip = self.conn_info()
+        if not port:
+            if self.mode.get() == "auto":
+                self.set_guide("e_dev", "err"); self.start_detect()
+            else:
+                self.set_guide("e_port", "err")
+            return
+        cur = dict(port=port, chip=chip, baud=self.baud.get() or "460800", off=0, size=0)
+        if kind == "part":
+            c2, err = self.current()
+            if err:
+                self.set_guide(err, "err"); return
+            cur.update(off=c2["off"], size=c2["size"])
+            msg = self.rw("er_part", off="\u200e" + hex(cur["off"]) + "\u200e", size=fmt_size(cur["size"]))
+            if self.ask(self.rw("er_confirm_t"), msg, [(self.tr("er_yes"), ER, True), (self.tr("b_cancel"), False, False)],
+                        icon="⚠", color=WA) is not True:
+                return
+        else:
+            if self.ask(self.rw("er_confirm_t"), self.rw("er_all"),
+                        [(self.tr("b_go"), True, True), (self.tr("b_cancel"), False, False)], icon="⚠", color=ER) is not True:
+                return
+            if self.ask(self.rw("er_confirm_t"), self.rw("er_all2"),
+                        [(self.tr("er_yes"), ER, True), (self.tr("b_cancel"), False, False)], icon="✖", color=ER) is not True:
+                return
+        self.busy = True
+        self.set_progress(0)
+        self.set_guide("ge1", "busy")
+        self.render_all()
+        threading.Thread(target=self.erase_worker, args=(kind, cur), daemon=True).start()
+
+    def erase_worker(self, kind, cur):
+        L = lambda t: self.ui(self.logw, t)
+        port, baud = cur["port"], cur["baud"]
+        chip = ["--chip", cur["chip"]] if cur["chip"] != "auto" else []
+        conn_err = r"Failed to connect|Wrong boot mode|No serial data received|Timed out waiting for packet|Invalid head of packet"
+        busy_re = r"Could not open|port is busy|Access is denied|PermissionError|in use"
+        sub = ["erase-region", hex(cur["off"]), hex(cur["size"])] if kind == "part" else ["erase-flash"]
+        before, txt, ok = [], "", False
+        self.ui(self.set_progress, 30)
+
+        def on_line(l):
+            L(l)
+        try:
+            for attempt in (0, 1):
+                L(f"> esptool {' '.join(sub)}")
+                code, txt = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "hard-reset", *sub),
+                                       on_line, timeout=300)
+                if code == 0:
+                    ok = True
+                    break
+                if attempt == 0 and re.search(conn_err, txt, re.I) and not re.search(busy_re, txt, re.I):
+                    r = self.boot_assist(port)
+                    if r in ("ok", "try"):
+                        before = ["--before", "no-reset"]
+                        self.ui(self.set_guide, "ge1", "busy")
+                        continue
+                    txt = "cancelled"
+                break
+        except Exception as e:
+            txt = str(e)
+
+        def done():
+            self.busy = False
+            if ok:
+                if self.stage == 4:
+                    self.stage = 2
+                    self.steps = ["ok", "ok", "ok", "on"]
+                self.set_progress(100, green=True)
+                self.set_guide("ge_part" if kind == "part" else "ge_all", "ok")
+                self.play("done")
+                self.logw("Erase OK.")
+            else:
+                self.set_progress(0)
+                busy_port = re.search(busy_re, txt, re.I)
+                boot = re.search(conn_err, txt, re.I) or txt == "cancelled"
+                self.set_guide("e_busy_port" if busy_port else ("e_boot" if boot else "e_erase"), "err")
+            self.render_all()
+            self.write_report(result=("ERASE OK" if ok else "ERASE FAILED") + f" ({kind})")
         self.ui(done)
 
     # --------------------------------------------------------------- report ---
