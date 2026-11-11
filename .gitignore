@@ -3,5 +3,4 @@ __pycache__/
 build/
 dist/
 output/
-/LittleFS_Programmer.exe
 *.spec
