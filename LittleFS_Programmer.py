@@ -453,6 +453,9 @@ class Bar(tk.Canvas):
             rrect(self, x0, 0, x1, h, h / 2, fill=self.color, outline="")
 
 
+BOOT_TIMEOUT = 120  # seconds the BOOT prompt waits for the board before giving up
+
+
 class App(tk.Tk):
     def __init__(self):
         try:
@@ -1539,7 +1542,18 @@ class App(tk.Tk):
             setst("boot_busy", ER_BG, ER)
         buf = b""
         t0 = time.time()
-        while time.time() - t0 < 300:
+        waiting, last_tick = True, 0
+        while time.time() - t0 < BOOT_TIMEOUT:
+            if waiting and time.time() - last_tick >= 1:
+                last_tick = time.time()
+                left = int(BOOT_TIMEOUT - (last_tick - t0))
+                def tick(left=left):
+                    try:
+                        h["st"].config(text=self.tr("boot_wait") + f"   {left} s")
+                    except Exception:
+                        pass
+                if ser is not None:
+                    self.ui(tick)
             if h["res"][0] is not None:
                 result = h["res"][0]
                 break
@@ -1558,11 +1572,13 @@ class App(tk.Tk):
             except Exception:
                 break
             if re.search(rb"waiting for download|DOWNLOAD_BOOT|download\(", buf, re.I):
+                waiting = False
                 setst("boot_seen", OK_BG, OK)
                 time.sleep(0.8)
                 result = "ok"
                 break
             if re.search(rb"SPI_FAST_FLASH_BOOT|boot:0x1[0-9a-f]\b", buf, re.I):
+                waiting = False
                 setst("boot_normal", WA_BG, WA)
                 buf = b""
         try:
@@ -1633,6 +1649,16 @@ class App(tk.Tk):
                     # reopening the port normally resets the chip out of the bootloader, so reconnect the same way as for writing
                     c2, t2 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "hard-reset",
                                                 "read-flash", off, hex(cur["size"]), rb), on_line, timeout=600)
+                    if c2 != 0 and re.search(conn_err, t2, re.I) and not re.search(busy_re, t2, re.I):
+                        # board left download mode after writing: ask for BOOT again, then continue automatically
+                        L("Board left download mode - asking the user to press BOOT for the read-back.")
+                        r = self.boot_assist(port)
+                        if r in ("ok", "try"):
+                            self.ui(self.set_guide, "g5", "busy")
+                            last[0] = 0
+                            c2, t2 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, "--before", "no-reset",
+                                                        "--after", "hard-reset", "read-flash", off, hex(cur["size"]), rb),
+                                                on_line, timeout=600)
                     rb_done = c2 == 0 and os.path.isfile(rb)
                     if rb_done:
                         rb_ran = True
