@@ -1625,14 +1625,17 @@ class App(tk.Tk):
                 self.ui(self.set_guide, "g5", "busy")
                 self.ui(self.set_progress, 0)
                 last[0] = 0
-                rb_ran = True
+                rb_done = False
                 tmpd = tempfile.mkdtemp(prefix="lfsreadback_")
                 try:
                     rb = os.path.join(tmpd, "readback.bin")
                     L(f"> esptool read-flash {off} {hex(cur['size'])} (verification)")
-                    c2, t2 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, "--before", "no-reset",
+                    # reopening the port normally resets the chip out of the bootloader, so reconnect the same way as for writing
+                    c2, t2 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "hard-reset",
                                                 "read-flash", off, hex(cur["size"]), rb), on_line, timeout=600)
-                    if c2 == 0 and os.path.isfile(rb):
+                    rb_done = c2 == 0 and os.path.isfile(rb)
+                    if rb_done:
+                        rb_ran = True
                         a, b = sha256_file(rb), sha256_file(self.bin_path)
                         rb_ok = a == b
                         L(f"Chip SHA-256  {a}")
@@ -1652,12 +1655,13 @@ class App(tk.Tk):
                         L("Read-back could not be completed (write itself was verified by the chip's MD5).")
                 finally:
                     shutil.rmtree(tmpd, ignore_errors=True)
-                # 5) restart the board (works when RTS/EN is wired; harmless otherwise)
-                try:
-                    run_stream(esp_cmd(*chip, "--port", port, "--baud", "115200", "--before", "no-reset",
-                                       "--after", "hard-reset", "chip-id"), lambda l: None, timeout=30)
-                except Exception:
-                    pass
+                if not rb_done:
+                    # 5) just restart the board so it runs the new files
+                    try:
+                        run_stream(esp_cmd(*chip, "--port", port, "--baud", "115200", *before,
+                                           "--after", "hard-reset", "chip-id"), lambda l: None, timeout=40)
+                    except Exception:
+                        pass
         except RuntimeError:
             pass
         except Exception as e:
