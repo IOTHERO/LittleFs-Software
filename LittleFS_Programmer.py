@@ -229,8 +229,18 @@ S = {
  dev_busy="پورت {port} در دسترس نیست",
  dev_busy_hint="برنامه‌ی دیگری (مثل Arduino IDE یا Serial Monitor) پورت را باز نگه داشته است. آن را ببندید و «اسکن مجدد» را بزنید.",
  dev_hint="برد در حالت دانلود نیست. دکمه BOOT را نگه دارید، یک بار EN (RESET) را بزنید، BOOT را رها کنید و «اسکن مجدد» را بزنید. می‌توانید مستقیم هم برنامه‌ریزی را امتحان کنید.",
+ b_go="ادامه", b_cancel="انصراف", b_ok="باشه", b_try="امتحان مستقیم",
+ boot_t="دکمه BOOT را فشار دهید",
+ boot_msg="برد در حالت دانلود نیست.\n\n۱) دکمه BOOT را نگه دارید\n۲) هم‌زمان یک بار دکمه EN (RESET) را بزنید\n۳) BOOT را تا شروع نوشتن نگه دارید",
+ boot_wait="در انتظار فشردن BOOT…", boot_seen="BOOT شناسایی شد ✔ در حال اتصال…",
+ boot_normal="برد عادی بوت شد. BOOT را نگه دارید و دوباره EN را بزنید.",
+ boot_busy="پورت در دسترس نیست. برنامه‌ی دیگری آن را باز نگه داشته است.",
+ fin_t="برنامه‌ریزی تمام شد",
+ fin_msg="فایل‌ها نوشته و از روی چیپ دوباره خوانده و تأیید شدند.\n\nدکمه BOOT را رها کنید و یک بار دکمه EN (RESET) را بزنید تا برنامه‌ی برد با فایل‌های جدید اجرا شود.",
+ g5=("در حال خواندن از چیپ برای تأیید نهایی…", "فایل‌های نوشته‌شده از روی حافظه‌ی ESP32 دوباره خوانده و با فایل اصلی مقایسه می‌شوند."),
+ g4v=("برنامه‌ریزی با موفقیت تمام شد", "فایل‌ها روی ESP32 نوشته شدند و از روی چیپ دوباره خوانده و با فایل اصلی یکسان بودند."),
  e_boot=("برد وارد حالت دانلود نشد", "دکمه BOOT را نگه دارید، یک بار دکمه EN (RESET) را بزنید، BOOT را رها کنید و دوباره روی برنامه‌ریزی بزنید."),
- confirm="فایل {name} ({size})\nروی {port} ({chip}) از آدرس {off} نوشته می‌شود.\n\nداده‌ی قبلی این بخش از حافظه پاک می‌شود.\nادامه می‌دهید؟",
+ confirm="فایل: {name} ({size})\nپورت: {port} ({chip})\nآدرس نوشتن: {off}\n\nداده‌ی قبلی این بخش از حافظه پاک می‌شود.\nادامه می‌دهید؟",
  confirm_warn="\n\nهشدار: آدرس واردشده با پارتیشن چیپ ({pt}) فرق دارد!",
  confirm_t="تأیید نوشتن", st0="آماده", st1="در حال ساخت…", st2="آماده برای برنامه‌ریزی", st3="در حال نوشتن…", st4="کامل شد",
  pick_title="پوشه data را انتخاب کنید",
@@ -271,8 +281,18 @@ S = {
  dev_busy="Port {port} is not available",
  dev_busy_hint="Another program (like Arduino IDE or a serial monitor) is holding the port. Close it and press Rescan.",
  dev_hint="The board is not in download mode. Hold BOOT, tap EN (RESET), release BOOT, then press Rescan. You can also try programming directly.",
+ b_go="Continue", b_cancel="Cancel", b_ok="OK", b_try="Try anyway",
+ boot_t="Press the BOOT button",
+ boot_msg="The board is not in download mode.\n\n1) Press and hold the BOOT button\n2) Tap EN (RESET) once while holding it\n3) Keep holding BOOT until writing starts",
+ boot_wait="Waiting for BOOT press…", boot_seen="BOOT detected ✔ connecting…",
+ boot_normal="The board booted normally. Hold BOOT and tap EN again.",
+ boot_busy="The port is not available. Another program is holding it.",
+ fin_t="Programming finished",
+ fin_msg="Files were written and read back from the chip for verification.\n\nRelease BOOT and tap EN (RESET) once so the board starts running with the new files.",
+ g5=("Reading back from the chip for final check…", "The written data is read from ESP32 flash and compared with the original file."),
+ g4v=("Programming finished successfully", "Files were written to ESP32 and read back from the chip: identical to the original."),
  e_boot=("The board did not enter download mode", "Hold the BOOT button, tap EN (RESET), release BOOT, then press Program again."),
- confirm="File {name} ({size})\nwill be written to {port} ({chip}) at {off}.\n\nExisting data in that region of flash will be erased.\nContinue?",
+ confirm="File: {name} ({size})\nPort: {port} ({chip})\nWrite address: {off}\n\nExisting data in that region of flash will be erased.\nContinue?",
  confirm_warn="\n\nWarning: the offset you entered differs from the chip partition ({pt})!",
  confirm_t="Confirm write", st0="Ready", st1="Building…", st2="Ready to program", st3="Writing…", st4="Complete",
  pick_title="Choose the data folder",
@@ -811,6 +831,76 @@ class App(tk.Tk):
         self.label(bf, "baud", self.f, fg=TX2, anchor=A_, width=7).pack(side=S_)
         ttk.Combobox(bf, textvariable=self.baud, width=10, values=["115200", "230400", "460800", "921600"]).pack(side=S_)
         self.refresh_ports()
+
+    # -------------------------------------------------------------- dialogs ---
+    def dark_title(self, w):
+        try:
+            import ctypes
+            w.update_idletasks()
+            hwnd = ctypes.windll.user32.GetParent(w.winfo_id())
+            v = ctypes.c_int(1)
+            for attr in (20, 19):
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(hwnd, attr, ctypes.byref(v), 4)
+        except Exception:
+            pass
+
+    def make_dialog(self, title, text, buttons, icon="⚠", color=None, status=False):
+        """Themed modal dialog. buttons=[(label, value, primary)]. Returns (win, res, status_label)."""
+        A_, J_, S_ = self.A, self.J, self.S
+        color = color or WA
+        out = [None]
+        w = tk.Toplevel(self)
+        w.title(title)
+        w.configure(bg=BG)
+        w.resizable(False, False)
+        try:
+            w.iconbitmap(res("app.ico"))
+        except Exception:
+            pass
+        w.transient(self)
+        box = tk.Frame(w, bg=CARD, highlightbackground=LINE, highlightthickness=1)
+        box.pack(padx=14, pady=14)
+        col = tk.Frame(box, bg=CARD)
+        col.pack(padx=int(26 * K), pady=int(22 * K))
+        wl = int(400 * K)
+        tk.Frame(col, width=wl, height=1, bg=CARD).pack()
+        head = tk.Frame(col, bg=CARD)
+        head.pack(fill="x")
+        tk.Label(head, text=icon, font=tkfont.Font(family="Segoe UI Symbol", size=22), bg=CARD, fg=color).pack(side=S_)
+        tk.Label(head, text=self.shape(title, font=self.fh), font=tkfont.Font(family="Segoe UI Semibold", size=13),
+                 bg=CARD, fg=TX).pack(side=S_, padx=12)
+        tk.Frame(col, bg=LINE, height=1).pack(fill="x", pady=(12, 12))
+        tk.Label(col, text=self.shape(text, wrap=wl - 10, font=self.fh), font=self.fh, bg=CARD, fg=TX, wraplength=wl,
+                 justify=J_, anchor=A_).pack(fill="x")
+        st = None
+        if status:
+            st = tk.Label(col, text="", font=self.fb, bg=ACC_BG, fg=ACC, wraplength=wl, justify="center",
+                          pady=int(8 * K))
+            st.pack(fill="x", pady=(14, 0))
+        row = tk.Frame(col, bg=CARD)
+        row.pack(fill="x", pady=(18, 0))
+
+        def pick(v):
+            out[0] = v
+            try: w.destroy()
+            except Exception: pass
+        for label, val, primary in buttons:
+            RBtn(row, text=label, font=self.fb, bg=ACC if primary else BTN, fg=ON_ACC if primary else TX,
+                 padx=22, pady=5, command=lambda v=val: pick(v)).pack(side=S_, padx=(0, 10) if not self.rtl else (10, 0))
+        w.protocol("WM_DELETE_WINDOW", lambda: pick(None))
+        w.update_idletasks()
+        x = self.winfo_rootx() + (self.winfo_width() - w.winfo_width()) // 2
+        y = self.winfo_rooty() + (self.winfo_height() - w.winfo_height()) // 3
+        w.geometry(f"+{max(0, x)}+{max(0, y)}")
+        self.dark_title(w)
+        w.grab_set()
+        w.focus_set()
+        return w, out, st
+
+    def ask(self, title, text, buttons, icon="⚠", color=None):
+        w, out, _ = self.make_dialog(title, text, buttons, icon, color)
+        self.wait_window(w)
+        return out[0]
 
     # --------------------------------------------------------------- about ---
     def show_about(self):
@@ -1385,10 +1475,10 @@ class App(tk.Tk):
             if mm and cur["off"] + cur["size"] > int(mm.group(1)) * 1024 * 1024:
                 self.set_guide("e_fit", "err", flash=flash); return
         msg = self.rw("confirm", name="littlefs.bin", size=fmt_size(cur["size"]), port=cur["port"],
-                      chip=cur["chip"].upper(), off=hex(cur["off"]))
+                      chip=cur["chip"].upper(), off="‎" + hex(cur["off"]) + "‎")
         if self.dev and self.dev.get("pt_off") is not None and self.dev["pt_off"] != cur["off"]:
             msg += self.rw("confirm_warn", pt=hex(self.dev["pt_off"]))
-        if not messagebox.askyesno(self.rw("confirm_t"), msg, icon="warning", parent=self):
+        if self.ask(self.rw("confirm_t"), msg, [(self.tr("b_go"), True, True), (self.tr("b_cancel"), False, False)]) is not True:
             return
         self.busy = True
         self.stage = 3
@@ -1398,13 +1488,85 @@ class App(tk.Tk):
         self.render_all()
         threading.Thread(target=self.program_worker, args=(cur,), daemon=True).start()
 
+    def boot_assist(self, port):
+        """Ask the user to press BOOT and detect the board entering download mode.
+        Returns "ok" (detected) | "try" (user wants to try anyway) | "cancel" | "busy"."""
+        built = threading.Event()
+        h = {}
+
+        def build():
+            w, rs, st = self.make_dialog(self.rw("boot_t"), self.rw("boot_msg"),
+                                          [(self.tr("b_try"), "try", False), (self.tr("b_cancel"), "cancel", False)],
+                                          icon="⚠", status=True)
+            st.config(text=self.tr("boot_wait"))
+            h.update(w=w, res=rs, st=st)
+            built.set()
+        self.ui(build)
+        built.wait(10)
+        self.ui(self.play, "ready")
+
+        def setst(key, bg=None, fg=None):
+            def f():
+                try:
+                    h["st"].config(text=self.tr(key), **({"bg": bg} if bg else {}), **({"fg": fg} if fg else {}))
+                except Exception:
+                    pass
+            self.ui(f)
+
+        def close():
+            self.ui(lambda: h["w"].winfo_exists() and h["w"].destroy())
+        result, ser = None, None
+        try:
+            import serial
+            ser = serial.Serial()
+            ser.port, ser.baudrate, ser.timeout = port, 115200, 0.25
+            ser.dtr, ser.rts = False, False
+            ser.open()
+        except Exception:
+            ser = None
+            setst("boot_busy", ER_BG, ER)
+        buf = b""
+        t0 = time.time()
+        while time.time() - t0 < 300:
+            if h["res"][0] is not None:
+                result = h["res"][0]
+                break
+            try:
+                if not h["w"].winfo_exists():
+                    result = "cancel"
+                    break
+            except Exception:
+                result = "cancel"
+                break
+            if ser is None:
+                time.sleep(0.3)
+                continue
+            try:
+                buf = (buf + ser.read(512))[-4000:]
+            except Exception:
+                break
+            if re.search(rb"waiting for download|DOWNLOAD_BOOT|download\(", buf, re.I):
+                setst("boot_seen", OK_BG, OK)
+                time.sleep(0.8)
+                result = "ok"
+                break
+            if re.search(rb"SPI_FAST_FLASH_BOOT|boot:0x1[0-9a-f]\b", buf, re.I):
+                setst("boot_normal", WA_BG, WA)
+                buf = b""
+        try:
+            if ser: ser.close()
+        except Exception:
+            pass
+        close()
+        time.sleep(0.4)
+        return result or "cancel"
+
     def program_worker(self, cur):
         L = lambda t: self.ui(self.logw, t)
-        args = ["--port", cur["port"], "--baud", cur["baud"]]
-        if cur["chip"] != "auto":
-            args = ["--chip", cur["chip"]] + args
-        cmd = esp_cmd(*args, "write-flash", hex(cur["off"]), self.bin_path)
-        L(f"> esptool {' '.join(args)} write-flash {hex(cur['off'])} littlefs.bin")
+        port, baud, off = cur["port"], cur["baud"], hex(cur["off"])
+        chip = ["--chip", cur["chip"]] if cur["chip"] != "auto" else []
+        conn_err = r"Failed to connect|Wrong boot mode|No serial data received|Timed out waiting for packet|Invalid head of packet"
+        busy_re = r"Could not open|port is busy|Access is denied|PermissionError|in use"
         last = [0]
 
         def on_line(l):
@@ -1414,39 +1576,106 @@ class App(tk.Tk):
                 if v != last[0]:
                     last[0] = v
                     self.ui(self.set_progress, v)
-                if "Writing at" in l and v % 20 != 0:
+                if ("Writing at" in l or "Read" in l) and v % 20 != 0:
                     return
             L(l)
-        conn_err = r"Failed to connect|Wrong boot mode|No serial data received|Timed out waiting for packet"
+        txt, ok, boot_used, rb_ok, rb_ran = "", False, False, False, False
         try:
-            code, txt = run_stream(cmd, on_line, timeout=600)
-            if code != 0 and re.search(conn_err, txt, re.I):
-                L("Retrying without reset (board already in download mode)...")
-                args2 = ["--port", cur["port"], "--baud", cur["baud"], "--before", "no-reset"]
-                if cur["chip"] != "auto":
-                    args2 = ["--chip", cur["chip"]] + args2
-                code, txt = run_stream(esp_cmd(*args2, "write-flash", hex(cur["off"]), self.bin_path), on_line, timeout=600)
+            # 1) connect (automatic reset first)
+            L("Connecting to the board...")
+            code, txt = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, "--connect-attempts", "2", "flash-id"),
+                                   lambda l: None, timeout=60)
+            before = []
+            if code != 0:
+                for l in txt.splitlines()[-3:]: L("[connect] " + l)
+                if not re.search(busy_re, txt, re.I):
+                    # 2) manual BOOT assistance
+                    L("Board not in download mode - asking the user to press BOOT.")
+                    r = self.boot_assist(port)
+                    if r == "cancel":
+                        L("Cancelled by user.")
+                        txt = "cancelled"
+                        raise RuntimeError("cancel")
+                    if r == "busy":
+                        txt = "Could not open port"
+                    else:
+                        before = ["--before", "no-reset"]
+                        boot_used = True
+            if not re.search(busy_re, txt if code != 0 and not boot_used else "", re.I):
+                # 3) write (stay in download mode afterwards so we can read back)
+                L(f"> esptool write-flash {off} littlefs.bin")
+                last[0] = 0
+                code, txt = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, *before, "--after", "no-reset",
+                                               "write-flash", off, self.bin_path), on_line, timeout=600)
+                ok = code == 0 and "Hash of data verified" in txt
+            if ok:
+                # 4) read back and compare with the original bin
+                self.ui(self.set_guide, "g5", "busy")
+                self.ui(self.set_progress, 0)
+                last[0] = 0
+                rb_ran = True
+                tmpd = tempfile.mkdtemp(prefix="lfsreadback_")
+                try:
+                    rb = os.path.join(tmpd, "readback.bin")
+                    L(f"> esptool read-flash {off} {hex(cur['size'])} (verification)")
+                    c2, t2 = run_stream(esp_cmd(*chip, "--port", port, "--baud", baud, "--before", "no-reset",
+                                                "read-flash", off, hex(cur["size"]), rb), on_line, timeout=600)
+                    if c2 == 0 and os.path.isfile(rb):
+                        a, b = sha256_file(rb), sha256_file(self.bin_path)
+                        rb_ok = a == b
+                        L(f"Chip SHA-256  {a}")
+                        L(f"File SHA-256  {b}")
+                        L("READ-BACK " + ("MATCH: the data on the chip is identical to littlefs.bin"
+                                          if rb_ok else "MISMATCH: the chip does not contain the same data!"))
+                        tool = find_tool()
+                        if tool:
+                            c3, t3 = run_stream([tool, "-u", "unpacked", "-b", str(BLOCK), "-p", str(PAGE),
+                                                 "-s", str(cur["size"]), rb], cwd=tmpd)
+                            got = tree(os.path.join(tmpd, "unpacked")) if c3 == 0 else {}
+                            L(f"Files found on the chip: {len(got)}")
+                            for rel in sorted(got)[:60]:
+                                L(f"  /{rel}  {fmt_size(os.path.getsize(got[rel]))}")
+                    else:
+                        for l in t2.splitlines()[-3:]: L("[read-back] " + l)
+                        L("Read-back could not be completed (write itself was verified by the chip's MD5).")
+                finally:
+                    shutil.rmtree(tmpd, ignore_errors=True)
+                # 5) restart the board (works when RTS/EN is wired; harmless otherwise)
+                try:
+                    run_stream(esp_cmd(*chip, "--port", port, "--baud", "115200", "--before", "no-reset",
+                                       "--after", "hard-reset", "chip-id"), lambda l: None, timeout=30)
+                except Exception:
+                    pass
+        except RuntimeError:
+            pass
         except Exception as e:
             code, txt = -1, str(e)
-        ok = code == 0 and "Hash of data verified" in txt
+        if rb_ran and not rb_ok:
+            ok = False
+            txt += "\nread-back mismatch"
+
         def done():
             self.busy = False
             if ok:
                 self.steps = ["ok"] * 4
                 self.set_progress(100, green=True)
                 self.set_stage(4)
-                self.set_guide("g4", "ok")
-                self.logw("Programming OK - hash verified.")
-            else:
-                self.stage = 2
-                self.steps = ["ok", "ok", "ok", "err"]
-                busy_port = re.search(r"Could not open|port is busy|Access is denied|PermissionError|in use", txt, re.I)
-                boot = re.search(conn_err, txt, re.I)
-                self.set_guide("e_busy_port" if busy_port else ("e_boot" if boot else "e_write"), "err")
-                self.set_progress(0)
-                self.render_buttons()
+                self.set_guide("g4v" if rb_ok else "g4", "ok")
+                self.logw("Programming OK - " + ("chip read-back verified." if rb_ok else "hash verified."))
+                self.render_all()
+                self.write_report(result="OK")
+                self.after(300, lambda: self.ask(self.rw("fin_t"), self.rw("fin_msg"),
+                                                 [(self.tr("b_ok"), True, True)], icon="✔", color=OK))
+                return
+            self.stage = 2
+            self.steps = ["ok", "ok", "ok", "err"]
+            busy_port = re.search(busy_re, txt, re.I)
+            boot = re.search(conn_err, txt, re.I) or txt == "cancelled"
+            self.set_guide("e_busy_port" if busy_port else ("e_boot" if boot else "e_write"), "err")
+            self.set_progress(0)
+            self.render_buttons()
             self.render_all()
-            self.write_report(result="OK" if ok else "FAILED")
+            self.write_report(result="FAILED")
         self.ui(done)
 
     # --------------------------------------------------------------- report ---
