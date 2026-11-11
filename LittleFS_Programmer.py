@@ -18,9 +18,12 @@ if len(sys.argv) > 1 and sys.argv[1] == "--esptool":
     import esptool
     sys.argv = ["esptool"] + sys.argv[2:]
     try:
-        esptool.main()
+        esptool._main()
     except SystemExit as e:
         sys.exit(e.code)
+    except BaseException as e:  # never let a windowed exe pop up a traceback dialog
+        print(f"A fatal error occurred: {e}")
+        sys.exit(2)
     sys.exit(0)
 
 import re
@@ -222,6 +225,11 @@ S = {
  dev_scan="در حال جست‌وجوی دستگاه…", dev_none="دستگاهی شناسایی نشد", dev_ok="دستگاه شناسایی شد",
  dev_nopt="جدول پارتیشن پیدا نشد؛ از مقدارهای دستی استفاده می‌شود",
  dev_noport="هیچ پورت COM وصل نیست",
+ dev_partial="پورت {port} پیدا شد ولی برد پاسخ نداد",
+ dev_busy="پورت {port} در دسترس نیست",
+ dev_busy_hint="برنامه‌ی دیگری (مثل Arduino IDE یا Serial Monitor) پورت را باز نگه داشته است. آن را ببندید و «اسکن مجدد» را بزنید.",
+ dev_hint="برد در حالت دانلود نیست. دکمه BOOT را نگه دارید، یک بار EN (RESET) را بزنید، BOOT را رها کنید و «اسکن مجدد» را بزنید. می‌توانید مستقیم هم برنامه‌ریزی را امتحان کنید.",
+ e_boot=("برد وارد حالت دانلود نشد", "دکمه BOOT را نگه دارید، یک بار دکمه EN (RESET) را بزنید، BOOT را رها کنید و دوباره روی برنامه‌ریزی بزنید."),
  confirm="فایل {name} ({size})\nروی {port} ({chip}) از آدرس {off} نوشته می‌شود.\n\nداده‌ی قبلی این بخش از حافظه پاک می‌شود.\nادامه می‌دهید؟",
  confirm_warn="\n\nهشدار: آدرس واردشده با پارتیشن چیپ ({pt}) فرق دارد!",
  confirm_t="تأیید نوشتن", st0="آماده", st1="در حال ساخت…", st2="آماده برای برنامه‌ریزی", st3="در حال نوشتن…", st4="کامل شد",
@@ -259,6 +267,11 @@ S = {
  dev_scan="Searching for a device…", dev_none="No device detected", dev_ok="Device detected",
  dev_nopt="Partition table not found; using manual values",
  dev_noport="No COM port is connected",
+ dev_partial="Port {port} found but the board did not answer",
+ dev_busy="Port {port} is not available",
+ dev_busy_hint="Another program (like Arduino IDE or a serial monitor) is holding the port. Close it and press Rescan.",
+ dev_hint="The board is not in download mode. Hold BOOT, tap EN (RESET), release BOOT, then press Rescan. You can also try programming directly.",
+ e_boot=("The board did not enter download mode", "Hold the BOOT button, tap EN (RESET), release BOOT, then press Program again."),
  confirm="File {name} ({size})\nwill be written to {port} ({chip}) at {off}.\n\nExisting data in that region of flash will be erased.\nContinue?",
  confirm_warn="\n\nWarning: the offset you entered differs from the chip partition ({pt})!",
  confirm_t="Confirm write", st0="Ready", st1="Building…", st2="Ready to program", st3="Writing…", st4="Complete",
@@ -769,6 +782,8 @@ class App(tk.Tk):
         self.reg.append((self.bscan, "scan"))
         self.dinfo = tk.Label(self.pa, font=self.fm, bg=CARD, fg=TX, anchor=A_, justify="left")
         self.dinfo.pack(fill="x", pady=(8, 0))
+        self.dhint = tk.Label(self.pa, font=self.f, bg=CARD, fg=WA, anchor=A_, justify=J_, wraplength=int(330 * K))
+        self.dhint.pack(fill="x", pady=(6, 0))
 
         # manual panel
         self.pm = tk.Frame(self.dbody, bg=CARD)
@@ -993,17 +1008,24 @@ class App(tk.Tk):
 
     def render_device(self):
         d, st = self.dev, self.dev_state
+        self.dhint.config(text="")
         if st == "scan":
             self.chip_lbl.config(text=self.tr("dev_scan"), bg=ACC_BG, fg=ACC)
             self.dinfo.config(text="")
-        elif d:
+        elif d and st == "ok":
             self.chip_lbl.config(text=self.sym("✔", self.tr("dev_ok")), bg=OK_BG, fg=OK)
-            lines = [f"{d['port']}  ·  {d['chip_name']}", f"Flash: {d.get('flash', '?')}   MAC: {d.get('mac', '?')}"]
+            lines = [f"{d['port']}  ·  {d['chip_name']}", f"Flash: {d.get('flash') or '?'}   MAC: {d.get('mac') or '?'}"]
             if d.get("pt_off") is not None:
                 lines.append(f"Partition: {hex(d['pt_off'])} / {fmt_size(d['pt_size'])}  ({d.get('pt_name', '')})")
             else:
-                lines.append(self.tr("dev_nopt"))
+                self.dhint.config(text=self.tr("dev_nopt"))
             self.dinfo.config(text="\n".join(lines))
+        elif d and st == "partial":
+            busy = d.get("reason") == "busy"
+            self.chip_lbl.config(text=self.sym("⚠", self.tr("dev_busy" if busy else "dev_partial").replace("{port}", d["port"])),
+                                 bg=ER_BG if busy else WA_BG, fg=ER if busy else WA)
+            self.dinfo.config(text=f"{d['port']}  ·  {d.get('desc', '')}")
+            self.dhint.config(text=self.tr("dev_busy_hint" if busy else "dev_hint"))
         else:
             msg = self.tr("dev_noport") if st == "noport" else self.tr("dev_none")
             self.chip_lbl.config(text=self.sym("⚠", msg), bg=WA_BG, fg=WA)
@@ -1080,33 +1102,50 @@ class App(tk.Tk):
         try:
             import serial.tools.list_ports as lp
             ports = sorted(lp.comports(), key=lambda p: p.device)
-            pref = [p for p in ports if p.vid in PREF_VIDS] or ports
-            if not pref:
+            if not ports:
                 self.ui(self.detect_done, None, "noport")
                 return
+            pref = [p for p in ports if p.vid in PREF_VIDS] or ports[:3]
+            tmp = os.path.join(tempfile.gettempdir(), "lfsprog_pt.bin")
+            last_out = ""
+            busy = False
             for p in pref:
-                code, out = run_stream(esp_cmd("--port", p.device, "--baud", "115200", "flash-id"), timeout=25)
-                if code != 0 or "Chip" not in out:
-                    continue
-                m = re.search(r"Chip type:\s*(.+)", out) or re.search(r"Chip is\s*(.+)", out)
-                chip_name = (m.group(1).strip() if m else "ESP32")
-                mf = re.search(r"Detected flash size:\s*(\S+)", out)
-                mm = re.search(r"MAC:\s*([0-9a-fA-F:]{17})", out)
-                d = dict(port=p.device, chip_name=chip_name, chip=chip_family(chip_name),
-                         flash=mf.group(1) if mf else None, mac=mm.group(1) if mm else None,
-                         pt_off=None, pt_size=None)
-                tmp = os.path.join(tempfile.gettempdir(), "lfsprog_pt.bin")
-                try:
-                    if os.path.exists(tmp): os.remove(tmp)
-                except Exception: pass
-                code2, _ = run_stream(esp_cmd("--port", p.device, "--baud", "115200", "read-flash", "0x8000", "0xC00", tmp), timeout=40)
-                if code2 == 0 and os.path.isfile(tmp):
-                    part = pick_fs_partition(parse_ptable(open(tmp, "rb").read()))
-                    if part:
-                        d.update(pt_off=part["offset"], pt_size=part["size"], pt_name=part["name"])
-                self.ui(self.detect_done, d, "ok")
-                return
-            self.ui(self.detect_done, None, "none")
+                if busy:
+                    break
+                for mode in ("default-reset", "no-reset"):
+                    base = ["--port", p.device, "--baud", "115200", "--before", mode, "--connect-attempts", "3"]
+                    try:
+                        if os.path.exists(tmp): os.remove(tmp)
+                    except Exception:
+                        pass
+                    code, out = run_stream(esp_cmd(*base, "read-flash", "0x8000", "0xC00", tmp), timeout=60)
+                    if code == 0 and os.path.isfile(tmp):
+                        m = re.search(r"Chip type:\s*(.+)", out) or re.search(r"Chip is\s*(.+)", out)
+                        chip_name = m.group(1).strip() if m else "ESP32"
+                        mm = re.search(r"MAC:\s*([0-9a-fA-F:]{17})", out)
+                        d = dict(port=p.device, desc=p.description, chip_name=chip_name, chip=chip_family(chip_name),
+                                 flash=None, mac=mm.group(1) if mm else None, pt_off=None, pt_size=None)
+                        part = pick_fs_partition(parse_ptable(open(tmp, "rb").read()))
+                        if part:
+                            d.update(pt_off=part["offset"], pt_size=part["size"], pt_name=part["name"])
+                        c2, o2 = run_stream(esp_cmd(*base, "flash-id"), timeout=40)
+                        mf = re.search(r"Detected flash size:\s*(\S+)", o2) if c2 == 0 else None
+                        if mf:
+                            d["flash"] = mf.group(1)
+                        self.ui(self.detect_done, d, "ok")
+                        return
+                    last_out = out
+                    if re.search(r"Could not open|port is busy|Access is denied|PermissionError", out, re.I):
+                        busy = True
+                        pref = [p]
+                        break
+            for l in last_out.splitlines()[-3:]:
+                self.ui(self.logw, "[detect] " + l)
+            first = pref[0]
+            d = dict(port=first.device, desc=first.description, chip_name="ESP32 ?", chip="auto", flash=None,
+                     mac=None, pt_off=None, pt_size=None, unverified=True,
+                     reason="busy" if busy else "noanswer")
+            self.ui(self.detect_done, d, "partial")
         except Exception as e:
             self.ui(self.logw, f"[detect] {e}")
             self.ui(self.detect_done, None, "none")
@@ -1117,10 +1156,12 @@ class App(tk.Tk):
         self.dev_state = state
         if d:
             self.logw(f"Device: {d['port']} {d['chip_name']} flash={d.get('flash')} partition="
-                      f"{hex(d['pt_off']) if d.get('pt_off') is not None else 'n/a'}")
+                      f"{hex(d['pt_off']) if d.get('pt_off') is not None else 'n/a'}"
+                      + ("  (port only, board did not answer)" if state == "partial" else ""))
             if d.get("pt_off") is not None:
                 self.off.set(hex(d["pt_off"])); self.size.set(hex(d["pt_size"]))
-            self.chip.set(d["chip"] if d["chip"] != "auto" else "esp32")
+            if d["chip"] != "auto":
+                self.chip.set(d["chip"])
             self.port.set(d["port"])
         self.render_device()
         self.update_check4()
@@ -1154,7 +1195,7 @@ class App(tk.Tk):
         if self.checks[3] == "err" and False:
             return
         if not cur or not self.dev or self.dev.get("pt_off") is None:
-            self.checks[3] = "warn" if self.stage >= 2 else "todo"
+            self.checks[3] = "todo"
         else:
             self.checks[3] = "ok" if (cur["off"], cur["size"]) == (self.dev["pt_off"], self.dev["pt_size"]) else "err"
 
@@ -1376,8 +1417,15 @@ class App(tk.Tk):
                 if "Writing at" in l and v % 20 != 0:
                     return
             L(l)
+        conn_err = r"Failed to connect|Wrong boot mode|No serial data received|Timed out waiting for packet"
         try:
             code, txt = run_stream(cmd, on_line, timeout=600)
+            if code != 0 and re.search(conn_err, txt, re.I):
+                L("Retrying without reset (board already in download mode)...")
+                args2 = ["--port", cur["port"], "--baud", cur["baud"], "--before", "no-reset"]
+                if cur["chip"] != "auto":
+                    args2 = ["--chip", cur["chip"]] + args2
+                code, txt = run_stream(esp_cmd(*args2, "write-flash", hex(cur["off"]), self.bin_path), on_line, timeout=600)
         except Exception as e:
             code, txt = -1, str(e)
         ok = code == 0 and "Hash of data verified" in txt
@@ -1392,8 +1440,9 @@ class App(tk.Tk):
             else:
                 self.stage = 2
                 self.steps = ["ok", "ok", "ok", "err"]
-                busy_port = re.search(r"could not open port|Access is denied|PermissionError|in use", txt, re.I)
-                self.set_guide("e_busy_port" if busy_port else "e_write", "err")
+                busy_port = re.search(r"Could not open|port is busy|Access is denied|PermissionError|in use", txt, re.I)
+                boot = re.search(conn_err, txt, re.I)
+                self.set_guide("e_busy_port" if busy_port else ("e_boot" if boot else "e_write"), "err")
                 self.set_progress(0)
                 self.render_buttons()
             self.render_all()
